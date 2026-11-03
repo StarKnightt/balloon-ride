@@ -585,3 +585,6 @@ Full write-up: `docs/critic/p4-final-response.md`. New frames are in `shots/p5/`
 - **`shots/p6`:** the down, 50m, 200m, 500m and basket frames still show houses, fields, roads, the river and layered clouds.
 - **`mobile_landscape`:** the top-right cloud is opaque, with no lines through it.
 - **GPU:** RTX 4060 (D3D11) was asserted on every run.
+- **Deploy:** commit 4f71216 was pushed to main. The push did not start a Pages run, so it was dispatched by hand: run 41620829973 succeeded.
+  - https://starknightt.github.io/balloon-ride/ returns 200.
+  - The live page was loaded headless on the GPU (RTX 4060, D3D11). It boots to `__game.ready`, `keepOffPath` is present, and there are 0 console errors and 0 failed requests.
