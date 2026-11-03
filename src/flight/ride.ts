@@ -13,6 +13,7 @@ import { Clouds } from "../world/cloudlayers";
 import { windAt } from "./wind";
 import { LAND } from "../render/landMaterials";
 import { Cinematic } from "./cinematic";
+import { Pilot } from "./pilot";
 
 export class Ride {
   readonly group = new THREE.Group();
@@ -22,6 +23,8 @@ export class Ride {
   readonly clouds: Clouds;
   readonly fx = new WindFx();
   readonly cams: Cameras;
+  /** The pilot in the player's basket (Phase 7). */
+  readonly pilot: Pilot;
   /** The running cinematic (C), or null. */
   cine: Cinematic | null = null;
   /** Cinematic time (s) for this frame, set by main before update(). */
@@ -33,9 +36,11 @@ export class Ride {
   private readonly w = new THREE.Vector2();
   private snapNext = true;
 
-  private constructor(tpl: THREE.Group, camera: THREE.PerspectiveCamera, el: HTMLElement, private readonly ground: (x: number, z: number) => number, seed: number) {
+  private constructor(tpl: THREE.Group, pilot: Pilot, camera: THREE.PerspectiveCamera, el: HTMLElement, private readonly ground: (x: number, z: number) => number, seed: number) {
     this.flight = new Flight(ground);
     this.player = new BalloonActor(tpl, 0, 0);
+    this.pilot = pilot;
+    this.player.model.add(pilot.root);
     this.group.add(this.player.root);
     windAt(PHYS.start.x, PHYS.start.y, PHYS.start.z, 0, this.w);
     this.others = new OtherBalloons(tpl, PHYS.start, this.w.clone().normalize(), ground);
@@ -54,8 +59,8 @@ export class Ride {
   }
 
   static async create(camera: THREE.PerspectiveCamera, el: HTMLElement, ground: (x: number, z: number) => number, seed: number): Promise<Ride> {
-    const tpl = await loadBalloon();
-    return new Ride(tpl, camera, el, ground, seed);
+    const [tpl, pilot] = await Promise.all([loadBalloon(), Pilot.load()]);
+    return new Ride(tpl, pilot, camera, el, ground, seed);
   }
 
   private place(): void {
@@ -141,6 +146,11 @@ export class Ride {
     const flick = 0.85 + 0.15 * Math.sin(t * 31) * Math.sin(t * 17.3 + 1.0);
     this.player.burnerWorld(this.tmp);
     G.uGlow.value.set(this.tmp.x, this.tmp.y, this.tmp.z, fl * 6.0 * flick);
+    // The pilot: her arm follows the burner (the flame stays on the input), she looks over the edge
+    // now and then, and in the basket view only her hand on the lever is drawn.
+    const basket = this.cams.view === "basket";
+    this.pilot.setBasketView(basket);
+    this.pilot.update(dt, f.burner, basket && this.cams.look.pitch < -0.75);
     this.others.update(f.pos, t, dt, realDt);
     if (snap) this.cams.snap();
     this.cams.update(snap ? 1 : realDt, f.pos, this.player.model.matrixWorld, this.ground, f.yaw);

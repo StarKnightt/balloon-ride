@@ -378,6 +378,12 @@ const game = {
       frames++;
     },
   },
+  /** The pilot (Phase 7): pose(clip, s) freezes her on a clip (idle | lookOver | burner | pull | hold | release); pose(null) resumes. */
+  pilot: {
+    pose: (clip: string | null, s = 0) => ride.pilot.pose(clip, s),
+    clips: () => [...ride.pilot.clips.keys()],
+    tris: () => ride.pilot.tris,
+  },
   /** Debug access for capture scripts. */
   ride,
   scene,

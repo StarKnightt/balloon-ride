@@ -28,6 +28,13 @@ Tech: Three.js + Vite + TypeScript, **pnpm only**. Project root `F:\balloon-ride
 - Mobile: touch buttons for burner + vent, drag to look.
 - URL params for capture: `?shot=<name>` style fixed cameras, `?time=sunrise|golden|sunset|blue`, `?seed`. Expose `window.__game` for scripts (set altitude, camera, time, pause).
 
+## Phase 7 (user request, after first ship): the pilot
+This replaces the earlier "no people / empty basket" rule, for this one character only.
+- An original stylized Ghibli-style pilot in the basket, modelled + rigged in Blender by script, exported to `public/models/pilot.glb`. Simple, charming, not a realistic human. Scarf, goggles pushed up on the head, one hand on the burner. Style should match the characters in Summer Cycle / Bay Ride (soft shapes, toon-shaded, ink outline), but it must be a NEW character: do not copy their rider or heroine models, rigs or faces.
+- Animations in Blender (exported as glTF clips): idle with the scarf blowing in the wind, looking over the edge, firing the burner (pull lever; played when Space is held). Blend between them in game with an AnimationMixer.
+- **Don't change anything else that already passed** (world, balloon, clouds, other balloons, cameras, time of day, mobile UI, audio). Basket view may show the pilot's arm/hand.
+- Gauntlet: critic compares the pilot against Summer Cycle and Bay Ride character style frames, then fix until PASS. Then rebuild, redeploy, and re-record the cinematic MP4 with the pilot in it.
+
 ## Capture spots (used after every system)
 `scripts/shoot.mjs` renders 1600x900 PNGs into `shots/<system>/`: `ground` (eye level near the village), `50m`, `200m`, `500m`, `down` (straight down from ~300 m), plus `basket` (V view at 250 m). Deterministic: fixed time, fixed seed, wait for load + a few frames.
 

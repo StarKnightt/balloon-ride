@@ -40,6 +40,10 @@ const W = 1600, H = 900;
  * script run in the page with `g` = window.__game and `gh(x, z)` = ground height (Phase 3: the
  * spots fly the real balloon; see docs/PROGRESS.md). The village sits at the origin.
  */
+// The pilot spots turn the basket so her front takes the golden sun; L(x, y, z) maps basket-frame
+// metres (x right, y up, z her front) to world.
+const PILOT_FRAME = `const yw = 150 * Math.PI / 180, c = Math.cos(yw), s = Math.sin(yw); g.flight.yaw(150);
+    const L = (lx, ly, lz) => [x + lx * c + lz * s, y + ly, z - lx * s + lz * c];`;
 const SPOTS = {
   // On the ground near the village, looking up at the balloon 50 m up.
   ground: `const bx = -170, bz = 120; g.flight.place(bx, gh(bx, bz) + 50, bz);
@@ -96,6 +100,16 @@ const SPOTS = {
   // Close on the burner flame.
   burner: `const x = -300, z = 250, y = gh(x, z) + 150; g.flight.place(x, y, z); g.flight.burner(true);
     g.setCamera([x + 2.6, y + 1.5, z + 2.4], [x, y + 4.3, z]);`,
+  // Phase 7, the pilot: a close three-quarter look at her in the basket at golden hour (idle, both
+  // hands resting on the front rim), mid-hold with the lever pulled down and the burner roaring (from
+  // her right and below, so her upturned face, the lever, the flame and its glow share the frame),
+  // and leaning on the front rim looking down over the edge (from outside, a little below the rim).
+  pilot: `const x = -300, z = 250, y = gh(x, z) + 140; g.flight.place(x, y, z); ${PILOT_FRAME} g.pilot.pose("idle", 0.6);
+    g.setCamera(L(0.45, 1.9, 1.55), L(0.12, 1.45, 0.08));`,
+  pilot_burner: `const x = -300, z = 250, y = gh(x, z) + 140; g.flight.place(x, y, z); ${PILOT_FRAME} g.flight.burner(true);
+    g.pilot.pose("burner", 1.2); g.setCamera(L(-0.85, 1.6, 2.2), L(-0.12, 2.1, 0.05));`,
+  pilot_look: `const x = -300, z = 250, y = gh(x, z) + 140; g.flight.place(x, y, z); ${PILOT_FRAME} g.pilot.pose("lookOver", 2.4);
+    g.setCamera(L(0.8, 0.75, 2.3), L(0.1, 1.25, 0.35));`,
   // The link-preview image (not in the default set): 1200x630, golden hour, the balloon over the
   // village, the river and the fields. Written to shots/<name>/og.png and copied to public/og.png.
   og: `const x = -330, z = 300, y = gh(x, z) + 120; g.flight.place(x, y, z); g.flight.yaw(-40);
@@ -109,7 +123,7 @@ const SPOTS = {
 };
 /** Spots that need their own frame size (everything else is W x H). */
 const SIZES = { og: [1200, 630] };
-const DEFAULT_SPOTS = ["ground", "50m", "200m", "500m", "down", "basket", "cloud", "burner"];
+const DEFAULT_SPOTS = ["ground", "50m", "200m", "500m", "down", "basket", "cloud", "burner", "pilot", "pilot_burner", "pilot_look"];
 const WANT = arg("spots", DEFAULT_SPOTS.join(",")).split(",").filter(Boolean);
 for (const s of WANT) if (!SPOTS[s]) await bye(2, `unknown spot "${s}" (have ${Object.keys(SPOTS).join(", ")})`);
 
@@ -176,6 +190,7 @@ for (const time of TIMES) {
       g.setClock(clock);
       g.flight.burner(null);
       g.flight.view("chase");
+      g.pilot.pose(null);
       if (isScript) {
         await new Function("g", "gh", spec)(g, gh);
         // The festival: the other balloons in a fan ahead of this view, round the player.

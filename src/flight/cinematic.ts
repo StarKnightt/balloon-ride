@@ -1,6 +1,6 @@
 /**
  * Cinematic mode (C): a scripted ~50 s camera path for showing the ride off and for recording
- * (scripts/record.mjs). It opens close on the balloon with the burner roaring, pulls back and up to
+ * (scripts/record.mjs). It opens close on the basket (the pilot pulling the burner lever), pulls back and up to
  * reveal the village, the river and the other balloons, then glides out over the golden fields and
  * ends wide. Meanwhile the balloon flies a scripted gentle climb drifting east toward the village.
  *
@@ -8,6 +8,10 @@
  * the same frame every time: the camera and target follow centripetal Catmull-Rom curves through
  * the key shots, timed by a monotone cubic through the key times (eased in at the start, out at
  * the end, never stopping in between).
+ *
+ * The opening (0-8 s) is a close shot on the basket laid over that path: the pilot pulling the
+ * burner lever, looking up into the flame and the envelope's throat. It holds to OPEN_HOLD, then
+ * eases into the path by OPEN_END; from there on the path, its timing and framing are untouched.
  */
 import * as THREE from "three";
 
@@ -19,6 +23,17 @@ const BURNS: [number, number][] = [
   [23.5, 27.2],
   [39.5, 42.0],
 ];
+
+/** The balloon's yaw during the cinematic (ride.ts startCinematic). */
+const CINE_YAW = 0.4;
+/** The opening close shot holds until OPEN_HOLD (s), then eases into the path by OPEN_END. */
+const OPEN_HOLD = 2.5;
+const OPEN_END = 8;
+/** The opening shot in the basket's frame (x right, y up, z the pilot's front; metres), and fov. */
+const OPEN_CAM = new THREE.Vector3(-1.45, 2.05, 3.0);
+const OPEN_TGT = new THREE.Vector3(-0.15, 2.55, 0.0);
+const OPEN_FOV = 56;
+const _v = new THREE.Vector3();
 
 const smooth = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -118,11 +133,21 @@ export class Cinematic {
     const u = this.u(Math.min(Math.max(s, 0), this.duration));
     const p = this.camCurve.getPoint(u);
     const t = this.tgtCurve.getPoint(u);
+    let fov = this.fov(s);
+    if (s < OPEN_END) {
+      // The opening: the close shot on the basket (it rides with the balloon), easing into the path.
+      const w = 1 - smooth(OPEN_HOLD, OPEN_END, s);
+      const b = this.balloonAt(s, _v);
+      const c = Math.cos(CINE_YAW), sn = Math.sin(CINE_YAW);
+      const L = (q: THREE.Vector3) => new THREE.Vector3(b.x + q.x * c + q.z * sn, b.y + q.y, b.z - q.x * sn + q.z * c);
+      p.lerp(L(OPEN_CAM), w);
+      t.lerp(L(OPEN_TGT), w);
+      fov += (OPEN_FOV - fov) * w;
+    }
     p.y = Math.max(p.y, Math.max(0, this.ground(p.x, p.z)) + 3);
     camera.position.copy(p);
     camera.up.set(0, 1, 0);
     camera.lookAt(t);
-    const fov = this.fov(s);
     if (camera.fov !== fov || camera.near !== 0.3) {
       camera.fov = fov;
       camera.near = 0.3;

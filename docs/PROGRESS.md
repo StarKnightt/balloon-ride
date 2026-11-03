@@ -588,3 +588,103 @@ Full write-up: `docs/critic/p4-final-response.md`. New frames are in `shots/p5/`
 - **Deploy:** commit 4f71216 was pushed to main. The push did not start a Pages run, so it was dispatched by hand: run 41620829973 succeeded.
   - https://starknightt.github.io/balloon-ride/ returns 200.
   - The live page was loaded headless on the GPU (RTX 4060, D3D11). It boots to `__game.ready`, `keepOffPath` is present, and there are 0 console errors and 0 failed requests.
+
+---
+
+## Phase 7: the pilot (2026-11-03)
+
+### The character
+- **New, original pilot** (`tools/pilot.py`, run in Blender through the MCP: `exec(open(r"F:/balloon-ride/tools/pilot.py").read())`; set `PILOT_EXPORT = False` first to build without exporting). A young balloon pilot, about 1.65 m: ginger bob with a scalloped fringe and soft locks, brass goggles with teal lenses pushed up on her hair, brown leather flying jacket with a cream fleece collar and dark knit cuffs and hem, a long red scarf with cream stripes (neck wrap, knot, a short front end and a long back tail), mitten hands with a separate thumb, navy trousers and boots (hidden by the basket).
+- **Face:** a 512 px texture painted in the script (numpy), projected onto the front of the head: tall dark-brown eyes with a warm low glow, two catch lights and a fine upper lash line, soft brows, rosy blush, four freckles on each cheek, a small nose stroke and a smile. Proportions and the treatment (simple eyes, blush, toon bands, warm ink) follow Summer Cycle's rider and Bay Ride's heroine; no mesh, rig or face was copied.
+- **Mesh:** lofted tubes with a Catmull-Clark level applied, about 15.1k triangles, 10 meshes, one material each (face, skin, hair, jacket, trousers, scarf, goggles, lever), vertex colours for albedo. The burner's blast-valve lever (a T handle hanging from the valve block) is part of the GLB, on its own bone.
+- **Rig:** root, hips, spine, chest, neck, head, and on each side shoulder, upper arm, forearm, hand, thigh and shin. There is a 5-bone scarf chain and the lever bone. The weights are scripted per part, each part on its own allowed bones with blends at the joints, and the parts are then joined. The arms run on IK: `ik_R` rides on the lever and `ik_L` rests on the front rim, with poles. The hands copy the targets' rotation, and the exporter samples the result.
+- **Clips (30 fps):**
+  - `idle` (4 s loop): breathing, a small sway, the head looking about, the right hand on the lever and the left resting on the front rim.
+  - `lookOver` (6 s): the right hand goes to the rim, she leans on it and looks down over the edge, looks left and right, then comes back.
+  - `burner`: the pull runs 0–0.4 s, the hold loops 0.4–2.4 s, and the release runs to 2.87 s. The lever rotates 13° and her head tilts up toward the flame.
+  - The scarf waves in every clip on a 2 s period, so the clips loop seamlessly.
+- Every clip was checked with Blender's `look` against an imported reference basket (`REF_*` objects in the `PilotBuild` scene, never exported).
+- **`public/models/pilot.glb`:** 732 KB, skinned (24 joints), 3 animations, the face PNG embedded.
+
+### In game (`src/flight/pilot.ts`, wired in `ride.ts`)
+- The GLB root sits at the balloon model's origin (her armature at basket (0.14, 0.05, 0.08) m, facing the model's +Z), so it is added straight to the player's balloon model. The rim (1.12 m) meets her waist.
+- **Materials:** the uber toon with skinning (SKIN_VS).
+  - Skin (ID 18) and hair (ID 14) use the RIDER variant, for the moonlit night shading.
+  - Jacket (22), trousers (23), scarf (24) and goggles (13) use the plain uber, so they take the burner glow.
+  - The lever uses the frame's metal and ink.
+  - The face is a small new shader: the skin toon with the face texture masked to the bind-pose front, with herShade and the burner glow.
+  - She gets her own copy of `uGlow` at 0.35 of the balloon's. At full strength her collar and face blew out under the nozzles. The face gets 1.8× that after dusk.
+  - Character IDs give her the warm brown ink. Shadows and reflections come from the layers.
+- **AnimationMixer** on game time, so frozen captures are deterministic.
+  - `idle` plays by default.
+  - Burner held (Space or the touch button, read through `flight.burner`): pull, then hold (looped), then release on letting go, with cross-fades.
+  - `lookOver` plays every 14–26 s of idle, and after 1.2 s in the V view when it pitches below −43° (9 s cooldown).
+  - The flame and roar still follow the input only.
+- **V basket view:** only `forearm_R`, `hand_R` and the lever are drawn, so her head and body never block the eye. The third-person and cinematic views show all of her.
+- **API:** `__game.pilot.pose(clip, s)` freezes her on a clip (`idle`, `lookOver`, `burner`, `pull`, `hold`, `release`). `pose(null)` resumes the live state machine. `clips()` and `tris()` are also available.
+- **Unchanged:** the world, the balloon, the clouds, the other balloons, the cameras, time of day, the mobile UI and audio.
+
+### Shots (`shots/p7`)
+- New spots, added to the default set:
+  - `pilot`: a close three-quarter view, golden hour, idle with her hand up on the lever.
+  - `pilot_burner`: mid-hold on the lever with the burner firing.
+  - `pilot_look`: from outside the basket just below the rim, leaning on it and peering over.
+- These spots yaw the basket 150° so her front takes the sun.
+- The shoot harness now resets the pilot (`pose(null)`) before every spot.
+- **Old spots:** `basket` and `down` match p6 apart from the pilot (hidden in the V view). The chase spots show her as a small figure in the basket.
+- `pnpm build` passes. `node scripts/shoot.mjs p7` ran on the RTX 4060 (D3D11) with no console or shader errors.
+- **Live state machine:** checked in the page (unpaused). It ran idle → pull → hold, then release → idle on letting go, then lookOver in the V view looking down, then back to pull on the burner.
+
+### GitHub Pages trigger (found this phase)
+- **Not the cause:**
+  - Actions is enabled (`allowed_actions: all`).
+  - The workflow is `active`.
+  - The YAML is valid (`on: push: branches: [main]`, ASCII, no BOM).
+  - Pages is set to build from GitHub Actions.
+  - There are no rulesets.
+  - No commit message contains `[skip ci]`.
+- **What happened:** the three pushes (10:20, 10:34 and 10:38 UTC) appear in the repo activity, by StarKnightt. None of them produced a `github-actions` check suite, although the Vercel, Netlify and other apps did get suites. Actions never registered the push trigger for this workflow: it was created in the same push that created the repo and the branch.
+- **Fix:** the workflow was re-registered (`gh workflow disable` then `gh workflow enable`, id 405556422). This cannot be confirmed until the next push to main. If that push still starts no run, the fallback is a trivial edit to `deploy.yml` in that push, which makes GitHub re-index the triggers.
+- Nothing was committed or pushed this phase.
+
+### Next
+- The critic compares the pilot against the Summer Cycle and Bay Ride character frames.
+- After PASS: rebuild, redeploy, and re-record the cinematic with her in it.
+
+### Pilot fix pass (critic `docs/critic/p7-pilot.md` FAIL → `docs/critic/p7-pilot-response.md`)
+- **Elbow:**
+  - The right sleeve is now one dense tapered tube, split 7 cm past the elbow with shared custom
+    normals (`forearm_R` stays separate for the V view).
+  - New `elbow_L/R` helper deform bones (half the forearm's rotation) carry a 16 cm smoothstep band of
+    the sleeve.
+  - The poles are animated (`POLE_R_REST` → `POLE_R_UP`).
+- **Poses:**
+  - **Idle:** both hands on the front rim's leather roll.
+  - **Burner** (3.3 s): reach 0–0.45 s, pull the lever 10 cm down (the rod slides through a fixed
+    bushing) to 0.7 s, hold loop 0.7–2.7 s, release to 3.3 s. Chin up to the nozzle, the left hand
+    bears on the rim.
+  - `pilot.ts` subclips are now 21/81 frames. In the V view her forearm and hand show only while the
+    arm is up on the lever.
+- **Glow:**
+  - The face shader's burner light is a soft-clamped orange wash in one toon band, and only a little
+    of it lifts the shade.
+  - Her cloned uber materials get `toneGlow`: the emission is soft-clamped per brightest channel, and
+    the shade is lifted at 15%. This is local to her materials; `materials.ts` is untouched.
+  - The head is now a 48x28 sphere (the face "seam" was faceting under the toon step).
+- **Collar:** its own `collar` mesh/material (ink id 13), warm cream `#d4b588`, a flat band turning
+  into two lapels.
+- **Cheap extras:** a waist and flared hem, tapered arms, warmer scarf stripes.
+- **Model:** `pilot.glb` is 948 KB, about 20.7k polygons.
+- **Shots:** `pilot_burner` is reframed from her right and below, with the flame in frame.
+- **Checks:**
+  - `pnpm build` passes.
+  - `shots/p7b` ran on the RTX 4060 (D3D11). `basket`, `down` and `burner` are pixel-identical to
+    p7. The chase spots differ only round her tiny figure.
+  - The cinematic was re-recorded.
+- **Cinematic opening (`cinematic.ts`, approved):**
+  - 0–8 s is a close basket shot laid over the path: it holds to 2.5 s, then eases into the path by 8 s.
+  - From 8 s on the path is identical. The 10/20/40 s frames match the previous recording to encode
+    noise.
+  - She pulls the lever under the flame from the first frame.
+  - Re-recorded: 50 s, 1080p60, NVENC.
+- Nothing was committed or pushed.
