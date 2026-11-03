@@ -34,7 +34,7 @@ const MASTER = 0.55;
 const BELLS = [784, 698.5, 659.3, 587.3, 523.3, 466.2];
 
 export class FlightAudio {
-  private ctx: AudioContext | null = null;
+  private ctx: BaseAudioContext | null = null;
   private kit: Kit | null = null;
   private master: GainNode | null = null;
   private verb: GainNode | null = null;
@@ -49,18 +49,30 @@ export class FlightAudio {
   private nextBells = 0;
   private nextCreak = 0;
   private paramT = 0;
+  /** Bell level trim (1 in the game; offline renders may set it). A plain gain: draws no randomness. */
+  bellTrim = 1;
+  /** Burner (whoosh and roar) level trim, 1 in the game; 0 lets record-audio.mjs isolate the burner by difference. */
+  burnerTrim = 1;
 
   /** Call from a user gesture. */
   start(): void {
     if (this.ctx) {
-      if (this.ctx.state === "suspended") void this.ctx.resume();
+      if (this.ctx.state === "suspended") void (this.ctx as AudioContext).resume();
       return;
     }
     const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!AC) return;
-    const ctx = new AC();
+    this.build(new AC());
+  }
+
+  /**
+   * Build the whole graph on any context (the live AudioContext, or an OfflineAudioContext for
+   * scripts/record-audio.mjs). `prebake` renders every voice bank now instead of a few per frame,
+   * so an offline render draws the RNG in a fixed order (deterministic).
+   */
+  build(ctx: BaseAudioContext, seed = 4242, prebake = false): void {
     this.ctx = ctx;
-    const kit = new Kit(ctx, 4242);
+    const kit = new Kit(ctx, seed);
     this.kit = kit;
     this.master = ctx.createGain();
     this.master.gain.value = this.muted ? 0 : MASTER;
@@ -130,6 +142,7 @@ export class FlightAudio {
     kit.bank("lark", 3, GEN_SR, skylark);
     kit.bank("creak", 4, GEN_SR, creak);
     BELLS.forEach((f, i) => kit.bank(`bell${i}`, 1, 22050, churchBell(f)));
+    if (prebake) kit.pump(Infinity);
     const now = ctx.currentTime;
     this.nextBird = now + 2;
     this.nextLark = now + 6;
@@ -154,9 +167,9 @@ export class FlightAudio {
     // ---- burner
     if (s.burner && !this.wasBurning) {
       const w = kit.pick("whoosh");
-      if (w) kit.play(w, now + 0.005, { dest: this.master, gain: 0.35, wet: 0.2, wetDest: this.verb, rate: rr(r, 0.95, 1.05) });
+      if (w) kit.play(w, now + 0.005, { dest: this.master, gain: 0.35 * this.burnerTrim, wet: 0.2, wetDest: this.verb, rate: rr(r, 0.95, 1.05) });
       this.roar.gain.cancelScheduledValues(now);
-      this.roar.gain.setTargetAtTime(0.42, now + 0.04, 0.09);
+      this.roar.gain.setTargetAtTime(0.42 * this.burnerTrim, now + 0.04, 0.09);
       this.roarLP.frequency.cancelScheduledValues(now);
       this.roarLP.frequency.setTargetAtTime(460, now, 0.1);
     } else if (!s.burner && this.wasBurning) {
@@ -214,7 +227,7 @@ export class FlightAudio {
       if (near > 0.05 && kit.has("bell5")) {
         const rows = 2 + Math.floor(r() * 3);
         let t = now + 0.1;
-        const g = 0.11 * near * (1 - 0.4 * smoothstep(200, 900, s.agl));
+        const g = 0.11 * this.bellTrim * near * (1 - 0.4 * smoothstep(200, 900, s.agl));
         const pan = rr(r, -0.5, 0.5);
         for (let row = 0; row < rows; row++) {
           for (let i = 0; i < BELLS.length; i++) {

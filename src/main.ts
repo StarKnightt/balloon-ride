@@ -377,6 +377,11 @@ const game = {
       render(1 / 60, 1 / 60);
       frames++;
     },
+    /** Render the cinematic's sound offline with the game's own audio graph (scripts/record-audio.mjs). Loaded on demand. */
+    async renderAudio(opts: import("./flight/audioRender").AudioRenderOpts = {}) {
+      const { renderCinematicAudio } = await import("./flight/audioRender");
+      return renderCinematicAudio(world.groundHeight, { night: tod.night, evening: tod.evening }, opts);
+    },
   },
   /** The pilot (Phase 7): pose(clip, s) freezes her on a clip (idle | lookOver | burner | pull | hold | release); pose(null) resumes. */
   pilot: {

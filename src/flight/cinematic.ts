@@ -18,7 +18,7 @@ import * as THREE from "three";
 export const CINE_DURATION = 50;
 
 /** Burner bursts [on, off] (s). */
-const BURNS: [number, number][] = [
+export const CINE_BURNS: readonly (readonly [number, number])[] = [
   [-1, 6.5],
   [23.5, 27.2],
   [39.5, 42.0],
@@ -113,13 +113,13 @@ export class Cinematic {
   }
 
   burning(s: number): boolean {
-    return BURNS.some(([a, b]) => s >= a && s < b);
+    return CINE_BURNS.some(([a, b]) => s >= a && s < b);
   }
 
   /** Flame size 0..1 at s: lights fast (0.08 s), dies a little slower (0.18 s), as Flame eases. */
   flame(s: number): number {
     let l = 0;
-    for (const [a, b] of BURNS) {
+    for (const [a, b] of CINE_BURNS) {
       if (s < a) continue;
       const peak = 1 - Math.exp(-(Math.min(s, b) - a) / 0.08);
       l = s < b ? peak : peak * Math.exp(-(s - b) / 0.18);

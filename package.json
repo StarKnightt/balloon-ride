@@ -9,7 +9,8 @@
     "preview": "vite preview --port 5440 --strictPort",
     "typecheck": "tsc --noEmit",
     "shoot": "node scripts/shoot.mjs",
-    "record": "node scripts/record.mjs"
+    "record": "node scripts/record.mjs",
+    "record:audio": "node scripts/record-audio.mjs"
   },
   "dependencies": {
     "three": "^0.186.0"

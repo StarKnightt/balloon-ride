@@ -688,3 +688,34 @@ Full write-up: `docs/critic/p4-final-response.md`. New frames are in `shots/p5/`
   - She pulls the lever under the flame from the first frame.
   - Re-recorded: 50 s, 1080p60, NVENC.
 - Nothing was committed or pushed.
+
+---
+
+## Phase 8: the cinematic's sound (2026-11-03)
+
+### Offline render with the game's own graph
+- **`pnpm record:audio`** (`scripts/record-audio.mjs`) builds and serves the game and opens headless Chrome. It uses the GPU flags, prints and asserts the renderer (RTX 4060, D3D11), treats shader errors as fatal, and tears everything down on every exit path. It then calls `__game.cinematic.renderAudio()`.
+- **`src/flight/audioRender.ts`** loads on demand through a dynamic import, so the live game never fetches it.
+  - It builds `FlightAudio` on an `OfflineAudioContext` (48 kHz stereo, 2,400,000 frames = 50.0 s).
+  - It drives that graph at 125 Hz (`suspend()` every 3 render quanta = 8 ms) with the AudioIn that `main.ts` builds during the live cinematic. Every input is a pure function of s:
+    - `Cinematic.burning(s)` (the exported `CINE_BURNS`: 0–6.5, 23.5–27.2, 39.5–42 s);
+    - `balloonAt(s)` for the position, and the same 0.1 s difference `ride.ts` uses for the velocity;
+    - AGL above max(ground, 0), the village distance `hypot(x, z)` (the game's bell rule), and golden-hour night/evening.
+  - Graph: burner roar, ignition whoosh and tail, wind, birds, skylarks, bells and creaks. The vent is never used in the cinematic.
+  - Seed 4242, and every voice bank is baked up front (`build(ctx, seed, prebake)`), so the events are deterministic. Repeated runs differ only by float rounding (< −140 dB), probably from Chrome's threaded convolver.
+- **`audio.ts` refactor:** `start()` now calls `build(new AudioContext())`, and the graph builds on any `BaseAudioContext`.
+  - New `bellTrim` and `burnerTrim` fields (both 1 in the game) are plain gains and draw no randomness.
+  - Live behaviour is unchanged. `pnpm build` passes. A live headless check (click, hold the burner, C twice, M twice) showed 0 console errors or warnings.
+- **Sync check, inside the script:** a second render with `burnerTrim: 0` has identical events, so the difference between the two renders is the burner alone.
+  - Audible onset (−40 dB): +5.3 ms at 0 s, +9.3 ms at 23.5 s and +9.3 ms at 39.5 s. The ticks land on the 8 ms grid (+4 ms), and the game schedules the whoosh 5 ms after the tick.
+  - Within 6 dB of full roar at +20, +30 and +29 ms. The game's roar starts 40 ms after the whoosh.
+  - The video's flame (`seek()` per frame, read in page): lit at frame 0; 0 at frames 1410/2370 and 0.19 at 1411/2371 (23.517/39.517 s); it starts dying at frames 390, 1633 and 2521. So the sound leads the first drawn flame by about 7 ms, inside one frame.
+- **Level:** two-pass loudnorm, applied linearly (the LRA target is raised to 18 so it stays linear and keeps the mix) → **−19.7 LUFS integrated, −3.0 dBTP, LRA 13.8 LU** (ebur128 agrees).
+  - The burner holds about 14 dB over the wind bed.
+  - **Difference from the live mix:** the bells are trimmed −6 dB for the recording (`--bells=0.5`). At the game's level they sat only 7 dB under the burner and 11 dB over the wind, so they led the 12–21 s stretch.
+  - The live mix also starts on the first gesture and generates its banks a few per frame. The offline render starts at s = 0 with everything baked.
+- **Outputs (not committed; `recordings/*.wav` is now gitignored too):**
+  - `recordings/balloon-ride-cinematic-audio.wav`: 24-bit, 48 kHz stereo, 2,400,000 frames.
+  - `recordings/balloon-ride-cinematic-audio.mp4`: video `-c:v copy` plus AAC LC 192k, 48 kHz stereo, 50.000 s.
+  - The video stream's `-f md5` is the same as the input's (854834aa00624d03d0542db98ee3a879): h264 Main, 1920x1080, 60/1, 3000 frames, 50.000 s.
+  - The input MP4 is untouched (file md5 unchanged).
