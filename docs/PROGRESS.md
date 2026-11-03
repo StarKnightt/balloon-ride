@@ -719,3 +719,4 @@ Full write-up: `docs/critic/p4-final-response.md`. New frames are in `shots/p5/`
   - `recordings/balloon-ride-cinematic-audio.mp4`: video `-c:v copy` plus AAC LC 192k, 48 kHz stereo, 50.000 s.
   - The video stream's `-f md5` is the same as the input's (854834aa00624d03d0542db98ee3a879): h264 Main, 1920x1080, 60/1, 3000 frames, 50.000 s.
   - The input MP4 is untouched (file md5 unchanged).
+- **Deploy:** commit 31ce0eb was pushed to main. As before, the push started no Pages run, so it was dispatched by hand: run 41637925111 succeeded on 31ce0eb, and https://starknightt.github.io/balloon-ride/ returns 200.
