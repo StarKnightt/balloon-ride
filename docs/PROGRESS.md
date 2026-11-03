@@ -539,3 +539,15 @@ Full write-up: `docs/critic/p4-final-response.md`. New frames are in `shots/p5/`
 ### Perf (golden, 1600x900)
 - 50–107 draw calls and 0.4–3.9 M triangles.
 - The wisps add a few thousand impostor lobes to the per-frame CPU sort.
+
+### Deploy
+- **Repo:** https://github.com/StarKnightt/balloon-ride (public, branch `main`). Topics: threejs, webgl, game, hot-air-balloon. The homepage is set to the Pages URL.
+- **Pages:** the source is GitHub Actions (`deploy.yml`). Run 41618304058 succeeded.
+  - These return 200: https://starknightt.github.io/balloon-ride/, `/og.png` (1200x630 PNG) and `/models/balloon.glb`.
+- **Live check:** the live URL was loaded in headless Chrome with the GPU flags (renderer `ANGLE (NVIDIA GeForce RTX 4060 … D3D11)`).
+  - It boots to `__game.ready`.
+  - The page title is "Balloon Ride".
+  - `models/balloon.glb` loads with a 200 through the relative base path.
+  - There are 0 console errors or warnings and no failed requests.
+- **Manual step left:** GitHub has no API for the repo social preview. Upload `public/og.png` once in Settings → Social preview.
+- **Actions notice (not an error):** some actions (checkout, setup-node, pnpm/action-setup) still target the deprecated Node 20 runtime, and GitHub forces them onto Node 24.
