@@ -551,3 +551,37 @@ Full write-up: `docs/critic/p4-final-response.md`. New frames are in `shots/p5/`
   - There are 0 console errors or warnings and no failed requests.
 - **Manual step left:** GitHub has no API for the repo social preview. Upload `public/og.png` once in Settings → Social preview.
 - **Actions notice (not an error):** some actions (checkout, setup-node, pnpm/action-setup) still target the deprecated Node 20 runtime, and GitHub forces them onto Node 24.
+
+---
+
+## Phase 6: R1 from `docs/critic/p5-final.md` (2026-11-03)
+
+### R1: the pillow cloud over the cinematic reveal
+- **Cause:** at c20 and c23 the "pillow" was a low wisp (base 140–185 m) only 20–90 m from the lens, plus a low puff about 350–450 m away.
+- **Path kept clear:** `Clouds.keepOffPath()` (in `cloudlayers.ts`) runs once when the cinematic starts (`main.ts` `toggleCinematic`).
+  - It samples the camera path every 0.5 s over 10–30 s, at the clock times those frames will play.
+  - Any cloud that would come within 450 m of the lens while inside the frustum sits out the whole flight. That means no draw, no shadow and no whiteout.
+  - Clouds are chosen once, so nothing pops mid-shot. Leaving the cinematic clears the list.
+  - The far puffs and backdrop stay, so the sky is still layered.
+- **Near clouds are never featureless:** the lobe shader gets a `near` factor (1 below 250 m, fading out by 1400 m). Close to the lens:
+  - lobe normals take over from the envelope normal;
+  - the cauliflower seams and lobe undersides are deeper;
+  - each lobe gets its own tone;
+  - the lower body and the base get brushed shade patches;
+  - the shade is painted with lilac washes, lobe by lobe. Without them the shading bands clamped the breakup away in the shade.
+  - Result: the near puff at c48 now shows separate billows, crescents and shaded undersides all the way down.
+
+### Nice-to-have: ink lines through a cloud in `mobile_landscape`
+- **Cause:** the phone tier draws the scene in one two-target pass (`singlePass`), so the clouds' normal-target blend never applied. That blend drives the ink mask negative where a cloud covers.
+- **Fix:** on that tier, the materials that carry `userData.normalBlend` adopt it as their own blend. Colour alpha is never read.
+- **Also changed:**
+  - The clouds' mask now goes negative from about 1/3 coverage.
+  - Distance fading is a shrink (alpha is `min(1, f*12)`, it was `f*3`).
+
+### Verified
+- **Recording:** `node scripts/record.mjs` wrote `recordings/balloon-ride-cinematic.mp4` (h264 NVENC, 1920x1080, 60/1, 50.0 s).
+  - The frames at 15, 18, 20, 23 and 25 s were viewed, then deleted.
+  - The village, the river, the bridge and the festival balloons are clear, with puffs and banks only far off.
+- **`shots/p6`:** the down, 50m, 200m, 500m and basket frames still show houses, fields, roads, the river and layered clouds.
+- **`mobile_landscape`:** the top-right cloud is opaque, with no lines through it.
+- **GPU:** RTX 4060 (D3D11) was asserted on every run.

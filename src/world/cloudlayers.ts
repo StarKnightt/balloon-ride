@@ -209,7 +209,10 @@ void main(){
   vec3 e = (p - (cc + vec3(0.0, vEnv.y * 0.42, 0.0))) / vec3(vEnv.x, vEnv.y * 0.7, vEnv.z);
   vec3 Ne = normalize(e + vec3(0.0, 1e-3, 0.0));
   vec3 V = -rd;
-  vec3 N = normalize(mix(Ne, Nl, 0.55));
+  // Close to the lens a cloud fills the frame, and the envelope's few big planes read as one
+  // smooth pillow: there the lobes take over the shading, so every billow keeps its own form.
+  float near = 1.0 - smoothstep(250.0, 1400.0, length(p - ro));
+  vec3 N = normalize(mix(Ne, Nl, mix(0.55, 0.8, near)));
   N = normalize(mix(N, vec3(0.0, -1.0, 0.0), flatK * 0.85));
   // Painter's key: never straight from behind the viewer. A front-lit cloud has its terminator on
   // the outline and reads as a flat cut-out (sunrise, sun at your back), so the key swings aside
@@ -230,8 +233,14 @@ void main(){
   // behind it (cauliflower), but only inside the cloud's outline.
   float lumpUnder = smoothstep(0.2, -0.7, Nl.y) * (1.0 - flatK);
   float inner = smoothstep(0.1, 0.45, dot(Ne, V));
-  float seam = smoothstep(0.55, 0.95, rr) * inner * (1.0 - flatK);
-  t -= lumpUnder * 0.24 + seam * 0.2;
+  float seam = smoothstep(mix(0.55, 0.42, near), 0.95, rr) * inner * (1.0 - flatK * (1.0 - near));
+  t -= lumpUnder * (0.24 + 0.14 * near) + seam * (0.2 + 0.16 * near);
+  // Painted breakup of the lower body and the underside: each lobe a slightly different tone (so
+  // billows overlap as separate shapes), plus broad brushed patches of shade, strongest low down.
+  float lobeTone = hash13(floor(C * 0.5) + seed * 31.0) - 0.5;
+  float patchN = vnoise(p.xz * 0.045 + p.y * 0.07 + seed * 3.0) * 0.65 + vnoise(p.xz * 0.13 - p.y * 0.1 + seed * 9.0) * 0.35;
+  float low = 1.0 - smoothstep(0.15, 0.7, vH);
+  t += lobeTone * (0.08 + 0.1 * near) * (0.5 + 0.5 * low) + (patchN - 0.5) * (0.12 + 0.22 * near) * low;
   float lit = smoothstep(0.5, 0.62, t);
   float mid = smoothstep(0.25, 0.4, t);
   // Lavender shade a step below the palette's low tone; the lit tops a touch warmer than white.
@@ -240,7 +249,12 @@ void main(){
   col = mix(col, uCloudTop * 0.97, lit);
   // The flat base: a cool lilac-grey, mottled a little, lighter toward its sunlit edge.
   float bm = vnoise(p.xz * 0.04 + seed * 5.0);
-  col = mix(col, shade * vec3(0.9, 0.9, 0.98) * (0.86 + 0.2 * bm), flatK * 0.85);
+  col = mix(col, shade * vec3(0.9, 0.9, 0.98) * (0.86 + (0.2 + 0.2 * near) * bm + lobeTone * 0.14 * near), flatK * 0.85);
+  // In the shade the bands above clamp the breakup away, so it is also painted into the tone there:
+  // darker and lighter washes of lilac, lobe by lobe, so a near shade mass is never one flat fill.
+  float wash = ((patchN - 0.5) * 0.22 + lobeTone * 0.12) * (0.35 + 0.65 * near) * (1.0 - lit);
+  col *= 1.0 + wash;
+  col = mix(col, col * vec3(1.04, 0.98, 0.94), clamp((patchN - 0.5) * 1.5, 0.0, 1.0) * near * (1.0 - lit) * 0.5);
   // Low sun: shaded flanks and the base take a warm bounce (rose-peach over the lilac).
   float lowSun = 1.0 - smoothstep(0.08, 0.5, L.y);
   float sunSide = smoothstep(-0.3, 0.7, dot(normalize(N.xz + 1e-5), normalize(L.xz + 1e-5)));
@@ -258,7 +272,9 @@ void main(){
   float vz = (viewMatrix * vec4(p, 1.0)).z;
   gl_FragDepth = clamp((vProj.x * vz + vProj.y) / -vz * 0.5 + 0.5, 0.0, 1.0);
   gColor = vec4(safe3(col), safe1(alpha));
-  gNormal = vec4(0.5, 0.5, 0.0, safe1(alpha));
+  // The mask leaves the ink behind a cloud as soon as it starts to cover it (see CLOUD_NORMAL_BLEND),
+  // not in proportion to its alpha: no field or hedge lines through a soft rim.
+  gNormal = vec4(0.5, 0.5, 0.0, safe1(min(alpha * 3.0, 1.0)));
 }`;
 
 export class CloudLayer {
@@ -274,6 +290,8 @@ export class CloudLayer {
   private order: Uint32Array;
   /** Per lobe: cloud index, lobe index. */
   private readonly ref: Uint32Array;
+  /** Clouds kept out of view (the cinematic's camera path), by index. */
+  culled = new Set<number>();
 
   constructor(readonly spec: LayerSpec, seed: number) {
     const r = mulberry32(seed);
@@ -357,7 +375,7 @@ export class CloudLayer {
       // Behind the camera and well clear of it: skip.
       const dx = cc.x - cam.x, dy = c.base + c.h * 0.5 - cam.y, dz = cc.z - cam.z;
       const ahead = dx * fwd.x + dy * fwd.y + dz * fwd.z;
-      fade[i] = ahead < -(c.w + c.h) * 1.3 ? 0 : f;
+      fade[i] = ahead < -(c.w + c.h) * 1.3 || this.culled.has(i) ? 0 : f;
     });
     let n = 0;
     const L = this.ref.length / 2;
@@ -385,7 +403,9 @@ export class CloudLayer {
       B[i * 4] = cx[ci];
       B[i * 4 + 1] = c.base;
       B[i * 4 + 2] = cz[ci];
-      B[i * 4 + 3] = Math.min(1, f * 3);
+      // Fading clouds shrink (the lobe radius above), never go see-through: a translucent cloud
+      // shows the fields' ink lines straight through its body.
+      B[i * 4 + 3] = Math.min(1, f * 12);
       E[i * 4] = c.w;
       E[i * 4 + 1] = c.h;
       E[i * 4 + 2] = c.d;
@@ -399,18 +419,48 @@ export class CloudLayer {
     }
   }
 
-  /** World base centre of cloud `c` as drawn now, wrapped round `cam`. */
-  centre(c: Cloud, cam: THREE.Vector3, out = new THREE.Vector3()): THREE.Vector3 {
+  /** World base centre of cloud `c` as drawn now (or at clock `t`), wrapped round `cam`. */
+  centre(c: Cloud, cam: THREE.Vector3, out = new THREE.Vector3(), t?: number): THREE.Vector3 {
     const P = this.spec.period;
     const wrap = (v: number, o: number) => o + (((v - o + P / 2) % P) + P) % P - P / 2;
-    return out.set(wrap(c.x + this.drift.x, cam.x), c.base, wrap(c.z + this.drift.y, cam.z));
+    const dx = t === undefined ? this.drift.x : this.wind.x * t, dz = t === undefined ? this.drift.y : this.wind.y * t;
+    return out.set(wrap(c.x + dx, cam.x), c.base, wrap(c.z + dz, cam.z));
+  }
+
+  /**
+   * Keep out of view every cloud that would pass closer than `radius` to the camera while in its
+   * frustum at any of the given views (clock time, camera): for a scripted path. Empty clears it.
+   */
+  keepOut(views: { t: number; cam: THREE.PerspectiveCamera }[], radius: number): number {
+    this.culled.clear();
+    const fr = new THREE.Frustum(), m = new THREE.Matrix4(), cc = new THREE.Vector3(), sph = new THREE.Sphere();
+    for (const v of views) {
+      m.multiplyMatrices(v.cam.projectionMatrix, v.cam.matrixWorldInverse);
+      fr.setFromProjectionMatrix(m);
+      const cam = v.cam.position;
+      this.clouds.forEach((c, i) => {
+        if (this.culled.has(i)) return;
+        this.centre(c, cam, cc, v.t);
+        for (const l of c.lumps) {
+          sph.center.set(cc.x + l[0], c.base + l[1], cc.z + l[2]);
+          sph.radius = l[3];
+          if (sph.center.distanceTo(cam) - l[3] < radius && fr.intersectsSphere(sph)) {
+            this.culled.add(i);
+            break;
+          }
+        }
+      });
+    }
+    return this.culled.size;
   }
 
   /** 0..1: how deep inside a cloud the point is (1 = well inside a lobe). */
   inside(p: THREE.Vector3, cam: THREE.Vector3): number {
     let best = 0;
     const cc = new THREE.Vector3();
-    for (const c of this.clouds) {
+    for (let ci = 0; ci < this.clouds.length; ci++) {
+      if (this.culled.has(ci)) continue;
+      const c = this.clouds[ci];
       this.centre(c, cam, cc);
       if (p.y < c.base - 12 || p.y > c.base + c.h + 12) continue;
       if (Math.abs(p.x - cc.x) > c.w + 40 || Math.abs(p.z - cc.z) > c.w + 40) continue;
@@ -598,7 +648,9 @@ export class Clouds {
     const stretch = Math.min(3.5, 1 / Math.max(ly, 0.2));
     const cc = new THREE.Vector3();
     for (const l of this.layers)
-      for (const c of l.clouds) {
+      for (let ci = 0; ci < l.clouds.length; ci++) {
+        if (l.culled.has(ci)) continue;
+        const c = l.clouds[ci];
         l.centre(c, cam, cc);
         const yc = c.base + c.h * 0.4 - 15;
         const gx = cc.x - (L.x / ly) * yc, gz = cc.z - (L.z / ly) * yc;
@@ -612,6 +664,27 @@ export class Clouds {
       else out[i].set(0, 0, 0, 0);
     }
     return Math.min(cand.length, out.length);
+  }
+
+  /**
+   * Keep big near clouds off a scripted camera path: `pose(s, camera)` places the camera at path
+   * time s, which plays at clock t0 + s; clouds within `radius` of the lens in [s0, s1] stay out of
+   * view for the whole path (chosen once, so nothing pops mid-shot). Call with no pose to clear.
+   */
+  keepOffPath(pose?: (s: number, cam: THREE.PerspectiveCamera) => void, t0 = 0, s0 = 0, s1 = 0, radius = 450): void {
+    if (!pose) {
+      for (const l of this.layers) l.culled.clear();
+      return;
+    }
+    const views: { t: number; cam: THREE.PerspectiveCamera }[] = [];
+    for (let s = s0; s <= s1 + 1e-6; s += 0.5) {
+      const cam = new THREE.PerspectiveCamera(50, 2, 0.3, 20000);
+      pose(s, cam);
+      cam.updateMatrixWorld();
+      cam.matrixWorldInverse.copy(cam.matrixWorld).invert();
+      views.push({ t: t0 + s, cam });
+    }
+    for (const l of this.layers) l.keepOut(views, radius);
   }
 
   /** Drift (clock t) and the whiteout for a camera at `cam` (`dt` real seconds; snap jumps there). */

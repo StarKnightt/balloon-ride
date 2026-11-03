@@ -89,10 +89,16 @@ const audio = new FlightAudio();
 let cineStart = 0;
 function toggleCinematic(on = !ride.cine): void {
   if (on) {
-    ride.startCinematic();
+    const cine = ride.startCinematic();
     cineStart = t;
     ride.cineT = 0;
-  } else ride.stopCinematic();
+    // The reveal (round behind the balloon to the village) must not be wiped by a cloud parked
+    // in front of the lens: clouds that would pass close in that stretch sit this flight out.
+    ride.clouds.keepOffPath((s, cam) => cine.pose(s, cam), cineStart, 10, 30, 450);
+  } else {
+    ride.stopCinematic();
+    ride.clouds.keepOffPath();
+  }
   controls.setButtons(!ride.cine);
 }
 const controls = new Controls({
@@ -142,6 +148,18 @@ let readyResolve!: () => void;
 const ready = new Promise<void>((res) => (readyResolve = res));
 
 const parts: THREE.Object3D[] = [sky.group, sky.far, sky.motes, world.group, ride.group];
+// One-pass tier: both targets share one blend state, so a painted cloud's own normal-target blend
+// (which drives the ink mask negative where it covers) must be the material's blend, or the fields'
+// and hedges' ink lines show straight through every cloud. Its colour alpha is never read.
+if (TIER.singlePass)
+  for (const root of parts)
+    root.traverse((o) => {
+      const mats = (o as THREE.Mesh).material;
+      for (const m of Array.isArray(mats) ? mats : mats ? [mats] : []) {
+        const nb = m.userData.normalBlend as Partial<THREE.ShaderMaterial> | undefined;
+        if (nb) Object.assign(m, nb);
+      }
+    });
 await precompile(renderer, scene, camera, post, [shadow], parts, () => {}, nextFrame);
 post.warmSmaa();
 
